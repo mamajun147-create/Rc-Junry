@@ -2,7 +2,7 @@
 const $ = id => document.getElementById(id);
 const configured = window.SUPABASE_URL && window.SUPABASE_ANON_KEY &&
  !window.SUPABASE_URL.includes("PASTE_") && !window.SUPABASE_ANON_KEY.includes("PASTE_");
-let db = null, session = null, memories = [], activeMemory = null, selectedPhoto = null, coverObjectUrl = null, activeFeed = "all";
+let db = null, session = null, memories = [], activeMemory = null, selectedPhoto = null, coverObjectUrl = null, activeFeed = "all", installPromptEvent = null;
 const BUCKET = "couple-memories";
 const partners = [
  {name:"Junry Amadeo", birth:"12-28", photoKey:"junryBirthdayPhoto"},
@@ -82,8 +82,38 @@ $("memoryForm").addEventListener("submit",async e=>{
  }catch(err){say("memoryMessage",err.message||"Couldn't save this memory. Check your connection and Supabase setup.")}finally{btn.disabled=false;btn.textContent="Save memory ♥"}
 });
 $("deleteMemoryBtn").onclick=async()=>{if(!activeMemory||!confirm("Delete this memory? This cannot be undone."))return;const {error}=await db.from("memories").delete().eq("id",activeMemory.id);if(error){alert(error.message);return}closeModal("detailModal");await loadMemories()};
+function applyCoverPhoto(url){
+ if(!url)return;
+ const safeUrl=String(url).replace(/"/g,"%22");
+ $("heroImage").style.backgroundImage=`linear-gradient(90deg,rgba(32,22,33,.18),rgba(32,22,33,.08)),url("${safeUrl}")`;
+ const authPhoto=document.querySelector(".auth-photo");if(authPhoto)authPhoto.style.backgroundImage=`url("${safeUrl}")`;
+}
+async function loadCoverPhoto(){
+ try{
+  const {data,error}=await db.from("couple_settings").select("value").eq("key","cover_photo_path").maybeSingle();
+  if(error)throw error;
+  if(data?.value)applyCoverPhoto(publicImage(data.value));
+ }catch(err){console.warn("Could not load saved cover photo. Run cover_photo_migration.sql in Supabase SQL Editor.",err.message||err)}
+}
 $("coverBtn").onclick=()=>$("coverInput").click();
-$("coverInput").onchange=()=>{const f=$("coverInput").files[0];if(!f)return;if(coverObjectUrl)URL.revokeObjectURL(coverObjectUrl);coverObjectUrl=URL.createObjectURL(f);$("heroImage").style.backgroundImage=`url("${coverObjectUrl}")`;document.querySelector(".auth-photo").style.backgroundImage=`url("${coverObjectUrl}")`};
+$("coverInput").onchange=async()=>{
+ const f=$("coverInput").files[0];if(!f)return;
+ const btn=$("coverBtn");btn.disabled=true;btn.textContent="Saving our cover… ♡";
+ try{
+  if(!session?.user?.id)throw new Error("Please log in before changing the cover photo.");
+  if(!f.type.startsWith("image/"))throw new Error("Please choose an image file.");
+  if(f.size>8*1024*1024)throw new Error("Please choose an image smaller than 8 MB.");
+  const path=await uploadImage(f,"covers");
+  const {error}=await db.from("couple_settings").upsert({key:"cover_photo_path",value:path,updated_by:session.user.id,updated_at:new Date().toISOString()},{onConflict:"key"});
+  if(error)throw error;
+  applyCoverPhoto(publicImage(path));
+  say("authMessage","Our cover photo has been saved! It will stay after refresh and show on both phones. ♥");
+ }catch(err){alert("Cover photo wasn't saved. " +(err.message||"Please run cover_photo_migration.sql in Supabase, then try again."));}
+ finally{btn.disabled=false;btn.textContent="＋ Change our cover photo";$("coverInput").value=""}
+};
+window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();installPromptEvent=e;const b=$("installAppBtn");if(b)b.hidden=false});
+if($("installAppBtn"))$("installAppBtn").addEventListener("click",async()=>{if(!installPromptEvent){alert("On iPhone: open this website in Safari, tap Share, then Add to Home Screen. On Android: open the browser menu and choose Install app or Add to Home screen.");return;}installPromptEvent.prompt();await installPromptEvent.userChoice;installPromptEvent=null;$("installAppBtn").hidden=true});
+
 function birthdayCheck(){
  const today=`${String(new Date().getMonth()+1).padStart(2,"0")}-${String(new Date().getDate()).padStart(2,"0")}`;
  const p=partners.find(x=>x.birth===today);if(!p)return;
@@ -95,7 +125,7 @@ function birthdayCheck(){
  // Show the birthday surprise when the birthday is opened; avoid interrupting login immediately.
  setTimeout(()=>{if(! $("appScreen").hidden)openModal("birthdayModal")},900);
 }
-function showApp(s){session=s;$("authScreen").hidden=true;$("appScreen").hidden=false;$("userEmail").textContent=s.user.email||"Our account";updateTogether();birthdayCheck();loadMemories()}
+function showApp(s){session=s;$("authScreen").hidden=true;$("appScreen").hidden=false;$("userEmail").textContent=s.user.email||"Our account";updateTogether();birthdayCheck();loadCoverPhoto();loadMemories()}
 function showAuth(){session=null;$("appScreen").hidden=true;$("authScreen").hidden=false}
 async function init(){
  if(!configured){say("authMessage","Setup needed: open config.js and add your Supabase Project URL and anon/public key. See README.txt.");return}
