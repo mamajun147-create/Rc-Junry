@@ -2,7 +2,7 @@
 const $ = id => document.getElementById(id);
 const configured = window.SUPABASE_URL && window.SUPABASE_ANON_KEY &&
  !window.SUPABASE_URL.includes("PASTE_") && !window.SUPABASE_ANON_KEY.includes("PASTE_");
-let db = null, session = null, memories = [], activeMemory = null, selectedPhoto = null, coverObjectUrl = null;
+let db = null, session = null, memories = [], activeMemory = null, selectedPhoto = null, coverObjectUrl = null, activeFeed = "all";
 const BUCKET = "couple-memories";
 const partners = [
  {name:"Junry Amadeo", birth:"12-28", photoKey:"junryBirthdayPhoto"},
@@ -48,6 +48,12 @@ function renderMemories(){
 $("memoryGrid").addEventListener("click",e=>{const c=e.target.closest("[data-memory]");if(c)showDetail(c.dataset.memory)});
 $("memoryGrid").addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){const c=e.target.closest("[data-memory]");if(c){e.preventDefault();showDetail(c.dataset.memory)}}});
 $("searchInput").addEventListener("input",renderMemories);$("sortSelect").addEventListener("change",renderMemories);
+document.querySelectorAll("[data-feed]").forEach(btn=>btn.addEventListener("click",()=>{
+  activeFeed=btn.dataset.feed;
+  document.querySelectorAll("[data-feed]").forEach(b=>b.classList.toggle("active",b===btn));
+  $("feedDescription").textContent=activeFeed==="all"?"Shared memories from both of you.":activeFeed==="junry"?"Memories posted under Junry's profile.":"Memories posted under Russel's profile.";
+  renderMemories();
+}));
 function showDetail(id){
  const m=memories.find(x=>x.id===id);if(!m)return;activeMemory=m;
  $("detailImage").src=m.image_path?publicImage(m.image_path):"";$("detailImage").style.display=m.image_path?"block":"none";

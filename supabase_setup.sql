@@ -37,3 +37,9 @@ create policy "Authenticated couple deletes photos" on storage.objects for delet
  using (bucket_id = 'couple-memories');
 create policy "Authenticated couple reads photos" on storage.objects for select to authenticated
  using (bucket_id = 'couple-memories');
+
+
+-- Shared feed/profile upgrade: run this migration in Supabase SQL Editor.
+-- Existing memories remain in place; older posts are labelled as shared memories.
+alter table public.memories add column if not exists author_name text;
+update public.memories set author_name = 'Our memory' where author_name is null;
